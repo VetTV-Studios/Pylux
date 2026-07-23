@@ -14,9 +14,6 @@
 #include <json-c/json.h>
 #include <string.h>
 
-// Purchased-library normalization is part of the owned-games fix under test.
-struct json_object *cc_normalize_purchased_game(struct json_object *raw);
-
 static struct json_object *parse(const char *s)
 {
 	struct json_object *o = json_tokener_parse(s);

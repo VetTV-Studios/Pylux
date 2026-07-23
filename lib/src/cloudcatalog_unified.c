@@ -3,8 +3,8 @@
 // Unified catalog orchestrator + public API. Mirrors the Qt fetchUnifiedCatalog
 // chain: native APOLLOROOT probe -> (public APOLLOROOT fallback walk | expired-warning) ->
 // imagic 6-list -> owned entitlements -> cross-reference -> assemble. Cache keys
-// (unified_catalog_v3 [contract schema; was v2 pre-migration], ps5_cloud_catalog_v6,
-// ps5_cloud_library) are shared across platforms so files stay byte-comparable, and
+// (unified_catalog_v3, ps5_cloud_catalog_v6, ps5_cloud_library_v2) are shared
+// across platforms so files stay byte-comparable, and
 // the unified read is guarded by schemaVersion so a stale older payload is never served.
 //
 // =============================================================================
@@ -107,7 +107,7 @@ static void write_library_cache(ChiakiLog *log, const char *cache_dir,
 	json_object_object_add(lib, "games", cc_json_clone(owned));
 	json_object_object_add(lib, "total", json_object_new_int((int)json_object_array_length(owned)));
 	json_object_object_add(lib, "componentIdsByProductId", cc_json_clone(components));
-	cc_cache_write(log, cache_dir, "ps5_cloud_library", lib);
+	cc_cache_write(log, cache_dir, "ps5_cloud_library_v2", lib);
 	json_object_put(lib);
 }
 
@@ -338,7 +338,7 @@ CHIAKI_EXPORT ChiakiErrorCode chiaki_cloudcatalog_fetch_unified(
 	struct json_object *owned = NULL, *components = NULL;
 	if(*npsso && !auth_error)
 	{
-		struct json_object *lib = force ? NULL : cc_cache_read(log, cache_dir, "ps5_cloud_library", CC_CACHE_TTL_MS);
+		struct json_object *lib = force ? NULL : cc_cache_read(log, cache_dir, "ps5_cloud_library_v2", CC_CACHE_TTL_MS);
 		if(lib)
 		{
 			struct json_object *g = cc_json_arr(lib, "games");
@@ -429,7 +429,8 @@ CHIAKI_EXPORT void chiaki_cloudcatalog_invalidate_cache(const char *cache_dir)
 	// Current keys + legacy keys, so invalidation also purges caches written by
 	// older builds (e.g. the pre-contract unified_catalog_v2).
 	static const char *const keys[] = {
-		"unified_catalog_v3", "ps5_cloud_catalog_v6", "ps5_cloud_library",
+		"unified_catalog_v3", "ps5_cloud_catalog_v6", "ps5_cloud_library_v2",
+		"ps5_cloud_library",
 		"psnow_catalog",
 		"unified_catalog_v2", "unified_catalog_v1",
 		"ps5_cloud_catalog_v5", "ps5_cloud_catalog_v4", "ps5_cloud_catalog_v3",
