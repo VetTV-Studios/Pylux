@@ -1,0 +1,53 @@
+name: Unit Tests
+
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches:
+      - master
+      - codex/**
+
+permissions:
+  contents: read
+
+jobs:
+  unit:
+    name: Shared library unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install Podman
+        run: sudo apt-get update && sudo apt-get -y install podman
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Build and run chiaki-unit
+        run: |
+          podman run --rm \
+            -v "$PWD:/build/chiaki" \
+            -w "/build/chiaki" \
+            -t docker.io/streetpea/chiaki-ng-builder:qt6.9 \
+            /bin/bash -lc '
+              set -xe
+              mkdir -p unit-tools
+              scripts/fetch-protoc.sh unit-tools
+              export PATH="$PWD/unit-tools/protoc/bin:$PATH"
+              if [ -f "$HOME/chiaki-venv/bin/activate" ]; then
+                source "$HOME/chiaki-venv/bin/activate"
+              fi
+              cmake -S . -B build-unit -GNinja \
+                -DCMAKE_BUILD_TYPE=Debug \
+                -DCHIAKI_ENABLE_TESTS=ON \
+                -DCHIAKI_ENABLE_GUI=OFF \
+                -DCHIAKI_ENABLE_CLI=OFF \
+                -DCHIAKI_ENABLE_FFMPEG_DECODER=OFF \
+                -DCHIAKI_ENABLE_PI_DECODER=OFF \
+                -DCHIAKI_ENABLE_STEAMDECK_NATIVE=OFF \
+                -DCHIAKI_ENABLE_STEAM_SHORTCUT=OFF \
+                -DCHIAKI_ENABLE_SETSU=OFF
+              cmake --build build-unit --target chiaki-unit
+              ./build-unit/test/chiaki-unit
+            '
