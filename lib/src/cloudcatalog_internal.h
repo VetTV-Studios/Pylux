@@ -251,7 +251,11 @@ typedef enum cc_owned_result_t
 /** Normalize one purchasedTitlesRetrieve game row. Returns a new reference or NULL. */
 struct json_object *cc_normalize_purchased_game(struct json_object *raw);
 
-/** Purchased-library fetch with legacy entitlement fallback. Outputs new games + component IDs. */
+/** Merge supplemental owned rows/components into the primary owned source. */
+void cc_merge_owned_source(struct json_object *games, struct json_object *components,
+	struct json_object *extra_games, struct json_object *extra_components);
+
+/** Purchased-library fetch unioned with legacy entitlements. Outputs new games + component IDs. */
 CCOwnedResult cc_fetch_owned(ChiakiLog *log, const char *npsso,
 	struct json_object **out_games, struct json_object **out_component_ids);
 

@@ -41,11 +41,25 @@ Intentionally minimal, so upstream fixes stay easy to pull:
 3. **Source offer points here.** `legal/agpl-source-notice.txt` names
    this repository instead of upstream's Dropbox archive.
 4. **Documentation.** This file and a short fork notice in `README.md`.
+5. **Purchased PS5/PS4 library ownership.** The shared catalog reads
+   Sony's `purchasedTitlesRetrieve` purchased-library API (the source
+   used by current PlayStation clients) and unions it with the legacy
+   `internal_entitlements` flow. This fixes purchased/free-to-play
+   titles whose launchable product and stream entitlement IDs differ
+   from the public browse SKU, without losing legacy-only licenses
+   such as disc upgrades. It only presents licenses returned for the
+   signed-in account; it does not create or bypass entitlements.
+6. **Session lifecycle hardening.** The fork carries upstream's
+   still-open production crash-cluster fixes for controller/session
+   thread joins and Qt live-session replacement.
+7. **Build maintenance.** A shared-library unit-test workflow runs the
+   MUnit suite, and the Windows build uses MSYS2's maintained UCRT64
+   repository because current `hidapi` and `diffutils` packages are no
+   longer published for legacy MINGW64.
 
-No streaming, protocol, or cloud code is modified. Networking and
-protocol behaviour is exactly upstream's shared C library (`lib/`),
-including the PlayStation cloud session/catalog implementation
-(`cloudsession*`, `cloudcatalog*`).
+The streaming wire protocol remains upstream's shared C library
+(`lib/`). Fork changes to cloud code are limited to the owned-library
+source, catalog cache invalidation, and the lifecycle fixes above.
 
 ## "Owned games via the cloud" — what actually gates it
 
@@ -73,10 +87,10 @@ Interactive Entertainment Inc.
 Trigger **Actions → Build Windows → Run workflow** on this fork, wait
 for the run, and download `pylux-windows-portable` /
 `pylux-windows-installer` from the run's Artifacts. The first run does
-a full MSYS2/MinGW dependency install and takes a while.
+a full MSYS2/UCRT64 dependency install and takes a while.
 
 For local builds follow upstream's workflow steps in
-`.github/workflows/build-windows.yml` (MSYS2 MinGW64 + Qt6 + the
+`.github/workflows/build-windows.yml` (MSYS2 UCRT64 + Qt6 + the
 pinned FFmpeg build + `scripts/build-libplacebo-windows.sh`).
 
 ## Syncing with upstream

@@ -5,8 +5,8 @@
 //   - PS Now OAuth -> session -> stores -> APOLLOROOT root + alphabetical walk
 //   - public APOLLOROOT one-level walk (region-unsupported accounts)
 //   - imagic 6-list fetch with locale fallback chain
-//   - owned games mobile OAuth -> purchasedTitlesRetrieve GraphQL
-//   - legacy internal_entitlements fallback for accounts where GraphQL is unavailable
+//   - owned games mobile OAuth -> purchasedTitlesRetrieve GraphQL, unioned
+//     with legacy internal_entitlements so source-specific licenses survive
 
 #include "cloudcatalog_internal.h"
 #include "curl_http.h"
@@ -873,7 +873,8 @@ static struct json_object *filter_owned(ChiakiLog *log, struct json_object *enti
 // Sony's current clients use the mobile OAuth client and the PlayStation Store
 // purchasedTitlesRetrieve GraphQL operation for the user's library. The older
 // internal_entitlements endpoint below omits some free-to-play/add-to-library
-// licenses (notably Fortnite's PSCP entitlement), so it remains a fallback only.
+// licenses (notably Fortnite's PSCP entitlement). Both sources are unioned
+// below so legacy-only licenses (such as disc upgrades) are not lost either.
 static CCOwnedResult mobile_owned_oauth(ChiakiLog *log, const char *npsso,
 	char *out_token, size_t tok_sz)
 {
@@ -989,7 +990,8 @@ static CCOwnedResult mobile_owned_oauth(ChiakiLog *log, const char *npsso,
 static void owned_component_add(struct json_object *components,
 	const char *product_id, const char *entitlement_id)
 {
-	if(!product_id || !*product_id || !entitlement_id || !*entitlement_id)
+	if(!components || !product_id || !*product_id
+		|| !entitlement_id || !*entitlement_id)
 		return;
 	struct json_object *arr = NULL;
 	if(!json_object_object_get_ex(components, product_id, &arr))
@@ -997,7 +999,79 @@ static void owned_component_add(struct json_object *components,
 		arr = json_object_new_array();
 		json_object_object_add(components, product_id, arr);
 	}
+	if(!arr || json_object_get_type(arr) != json_type_array)
+		return;
+	for(size_t i = 0; i < json_object_array_length(arr); i++)
+	{
+		const char *existing =
+			json_object_get_string(json_object_array_get_idx(arr, i));
+		if(existing && strcmp(existing, entitlement_id) == 0)
+			return;
+	}
 	json_object_array_add(arr, json_object_new_string(entitlement_id));
+}
+
+static const char *owned_row_product_id(struct json_object *row)
+{
+	const char *product_id = cc_json_str(row, "product_id");
+	return *product_id ? product_id : cc_json_str(row, "productId");
+}
+
+static bool owned_row_exists(struct json_object *games,
+	const char *entitlement_id, const char *product_id)
+{
+	if(!games || json_object_get_type(games) != json_type_array)
+		return false;
+	for(size_t i = 0; i < json_object_array_length(games); i++)
+	{
+		struct json_object *game = json_object_array_get_idx(games, i);
+		if(!game || json_object_get_type(game) != json_type_object)
+			continue;
+		bool id_match = *entitlement_id
+			&& strcmp(cc_json_str(game, "id"), entitlement_id) == 0;
+		bool product_match = *product_id
+			&& strcmp(owned_row_product_id(game), product_id) == 0;
+		if((*entitlement_id && *product_id && id_match && product_match)
+			|| (!*entitlement_id && product_match)
+			|| (!*product_id && id_match))
+			return true;
+	}
+	return false;
+}
+
+void cc_merge_owned_source(struct json_object *games, struct json_object *components,
+	struct json_object *extra_games, struct json_object *extra_components)
+{
+	if(games && json_object_get_type(games) == json_type_array
+		&& extra_games && json_object_get_type(extra_games) == json_type_array)
+	{
+		for(size_t i = 0; i < json_object_array_length(extra_games); i++)
+		{
+			struct json_object *game = json_object_array_get_idx(extra_games, i);
+			if(!game || json_object_get_type(game) != json_type_object)
+				continue;
+			if(!owned_row_exists(games, cc_json_str(game, "id"),
+				owned_row_product_id(game)))
+				json_object_array_add(games, cc_json_clone(game));
+		}
+	}
+
+	if(!components || json_object_get_type(components) != json_type_object
+		|| !extra_components
+		|| json_object_get_type(extra_components) != json_type_object)
+		return;
+	json_object_object_foreach(extra_components, product_id, entitlement_ids)
+	{
+		if(!entitlement_ids
+			|| json_object_get_type(entitlement_ids) != json_type_array)
+			continue;
+		for(size_t i = 0; i < json_object_array_length(entitlement_ids); i++)
+		{
+			const char *entitlement_id = json_object_get_string(
+				json_object_array_get_idx(entitlement_ids, i));
+			owned_component_add(components, product_id, entitlement_id);
+		}
+	}
 }
 
 struct json_object *cc_normalize_purchased_game(struct json_object *raw)
@@ -1144,7 +1218,15 @@ static CCOwnedResult fetch_owned_mobile(ChiakiLog *log, const char *npsso,
 		}
 
 		struct json_object *page = cc_json_arr(purchased, "games");
-		int page_count = page ? (int)json_object_array_length(page) : 0;
+		if(!page)
+		{
+			// A response without the contracted games array is schema drift,
+			// not proof that the account owns nothing. Fall back instead.
+			result = CC_OWNED_ERROR;
+			json_object_put(root);
+			break;
+		}
+		int page_count = (int)json_object_array_length(page);
 		for(int i = 0; i < page_count; i++)
 		{
 			struct json_object *raw = json_object_array_get_idx(page, i);
@@ -1345,15 +1427,50 @@ CCOwnedResult cc_fetch_owned(ChiakiLog *log, const char *npsso,
 	if(!npsso || !*npsso)
 		return CC_OWNED_AUTH_ERROR;
 
-	CCOwnedResult mobile = fetch_owned_mobile(log, npsso, out_games, out_component_ids);
-	if(mobile == CC_OWNED_OK)
-		return CC_OWNED_OK;
+	struct json_object *mobile_games = NULL, *mobile_components = NULL;
+	CCOwnedResult mobile = fetch_owned_mobile(
+		log, npsso, &mobile_games, &mobile_components);
 
-	CHIAKI_LOGW(log, "[OWNED] purchased-library fetch failed (%s); trying legacy entitlements",
-		mobile == CC_OWNED_AUTH_ERROR ? "authorization" : "network/server");
-	CCOwnedResult legacy = fetch_owned_legacy(log, npsso, out_games, out_component_ids);
-	if(legacy == CC_OWNED_OK)
+	struct json_object *legacy_games = NULL, *legacy_components = NULL;
+	CCOwnedResult legacy = fetch_owned_legacy(
+		log, npsso, &legacy_games, &legacy_components);
+
+	if(mobile == CC_OWNED_OK && legacy == CC_OWNED_OK)
+	{
+		int purchased_count = (int)json_object_array_length(mobile_games);
+		int legacy_count = (int)json_object_array_length(legacy_games);
+		cc_merge_owned_source(
+			mobile_games, mobile_components, legacy_games, legacy_components);
+		CHIAKI_LOGI(log,
+			"[OWNED] merged purchased and legacy libraries: %d + %d -> %d games",
+			purchased_count, legacy_count,
+			(int)json_object_array_length(mobile_games));
+		json_object_put(legacy_games);
+		json_object_put(legacy_components);
+		*out_games = mobile_games;
+		*out_component_ids = mobile_components;
 		return CC_OWNED_OK;
+	}
+
+	if(mobile == CC_OWNED_OK)
+	{
+		CHIAKI_LOGW(log,
+			"[OWNED] legacy entitlement supplement failed (%s); using purchased library",
+			legacy == CC_OWNED_AUTH_ERROR ? "authorization" : "network/server");
+		*out_games = mobile_games;
+		*out_component_ids = mobile_components;
+		return CC_OWNED_OK;
+	}
+
+	if(legacy == CC_OWNED_OK)
+	{
+		CHIAKI_LOGW(log,
+			"[OWNED] purchased-library fetch failed (%s); using legacy entitlements",
+			mobile == CC_OWNED_AUTH_ERROR ? "authorization" : "network/server");
+		*out_games = legacy_games;
+		*out_component_ids = legacy_components;
+		return CC_OWNED_OK;
+	}
 
 	// Only call the session expired when both independent OAuth flows rejected
 	// the NPSSO. A transport/server failure in either path must not log the user out.

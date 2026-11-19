@@ -14,10 +14,6 @@
 #include <json-c/json.h>
 #include <string.h>
 
-// Purchased/legacy owned-source union under test.
-void cc_merge_owned_source(struct json_object *games, struct json_object *components,
-	struct json_object *extra_games, struct json_object *extra_components);
-
 static struct json_object *parse(const char *s)
 {
 	struct json_object *o = json_tokener_parse(s);
