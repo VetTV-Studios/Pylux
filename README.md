@@ -3,6 +3,14 @@
 
 # Pylux
 
+> **VetTV-Studios fork.** This is a fork of
+> [ForWard-Technologies-LLC/Pylux](https://github.com/ForWard-Technologies-LLC/Pylux),
+> kept under the same AGPL-3.0 license. See [FORK.md](FORK.md) for what
+> differs (safe release automation, AGPL files in the Windows package)
+> and for the account/subscription requirements behind cloud streaming
+> of owned PS5 games. Download links below point to upstream builds;
+> fork builds are under this repo's Actions artifacts.
+
 [![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue)](https://github.com/ForWard-Technologies-LLC/Pylux/blob/master/LICENSES/AGPL-3.0-only-OpenSSL.txt)
 [![Platforms](https://img.shields.io/badge/platforms-Android%20%7C%20iOS%20%7C%20macOS%20%7C%20Windows%20%7C%20Linux-brightgreen)](https://github.com/ForWard-Technologies-LLC/Pylux/releases)
 [![Reddit: r/Pylux](https://img.shields.io/badge/Reddit-r%2FPylux-FF4500?logo=reddit&logoColor=white)](https://www.reddit.com/r/Pylux/)

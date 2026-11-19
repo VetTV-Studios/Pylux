@@ -173,6 +173,13 @@ jobs:
           done
           rm -f tmp0.txt tmp.txt
 
+      - name: Add AGPL compliance files
+        run: |
+          source scripts/add-agpl-compliance.sh
+          add_agpl_compliance "pylux"
+          test -f pylux/usr/share/licenses/pylux/COPYING
+          test -f pylux/usr/share/licenses/pylux/SOURCE_CODE.txt
+
       - name: Create zip archive
         run: |
           zip -r pylux.zip pylux
@@ -195,7 +202,10 @@ jobs:
           echo "INSTALLER_NAME=${INSTALLER_NAME}" >> $GITHUB_ENV
           echo "Renamed installer to: ${INSTALLER_NAME}"
 
+      # Dropbox publishing only ever runs in the upstream repository.
+      # Forks (e.g. VetTV-Studios/Pylux) get GitHub artifacts instead.
       - name: Publish portable zip
+        if: ${{ github.repository == 'ForWard-Technologies-LLC/Pylux' }}
         id: zip
         uses: ./.github/actions/dropbox-publish
         with:
@@ -207,6 +217,7 @@ jobs:
           app-secret: ${{ secrets.DROPBOX_APP_SECRET }}
 
       - name: Publish installer
+        if: ${{ github.repository == 'ForWard-Technologies-LLC/Pylux' }}
         id: installer
         uses: ./.github/actions/dropbox-publish
         with:
@@ -216,6 +227,18 @@ jobs:
           refresh-token: ${{ secrets.DROPBOX_REFRESH_TOKEN }}
           app-key: ${{ secrets.DROPBOX_APP_KEY }}
           app-secret: ${{ secrets.DROPBOX_APP_SECRET }}
+
+      - name: Upload portable zip artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pylux-windows-portable
+          path: ${{ env.RELEASE_PACKAGE_PATH }}
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pylux-windows-installer
+          path: ${{ env.INSTALLER_NAME }}
 
       - name: Build summary
         if: always()

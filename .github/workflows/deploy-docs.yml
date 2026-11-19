@@ -12,6 +12,8 @@ on:
 
 jobs:
   deploy:
+    # Docs publishing only runs in the upstream repository.
+    if: github.repository == 'ForWard-Technologies-LLC/Pylux'
     runs-on: ubuntu-latest
     permissions:
       contents: write
