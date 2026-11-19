@@ -392,6 +392,8 @@ static MunitResult test_fortnite_purchased_library_sku(const MunitParameter p[],
 	munit_assert_string_equal(cc_json_str(fortnite, "category"), "owned");
 	munit_assert_string_equal(cc_json_str(fortnite, "serviceType"), "pscloud");
 	munit_assert_string_equal(cc_json_str(fortnite, "storeProductId"),
+		"UP1477-PPSA01922_00-PSCP320000000000");
+	munit_assert_string_equal(cc_json_str(fortnite, "catalogProductId"),
 		"UP1477-PPSA01922_00-FNBNDL0000000000");
 	munit_assert_string_equal(cc_json_str(fortnite, "entitlementId"),
 		"UP1477-PPSA01922_00-FORTNITETESTING2");
