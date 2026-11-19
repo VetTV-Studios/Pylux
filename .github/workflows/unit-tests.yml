@@ -30,7 +30,7 @@ jobs:
             -v "$PWD:/build/chiaki" \
             -w "/build/chiaki" \
             -t docker.io/streetpea/chiaki-ng-builder:qt6.9 \
-            /bin/bash -lc '
+            sudo -E /bin/bash -lc '
               set -xe
               mkdir -p unit-tools
               scripts/fetch-protoc.sh unit-tools
