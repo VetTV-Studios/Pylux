@@ -14,6 +14,10 @@
 #include <json-c/json.h>
 #include <string.h>
 
+// Purchased/legacy owned-source union under test.
+void cc_merge_owned_source(struct json_object *games, struct json_object *components,
+	struct json_object *extra_games, struct json_object *extra_components);
+
 static struct json_object *parse(const char *s)
 {
 	struct json_object *o = json_tokener_parse(s);
@@ -410,6 +414,59 @@ static MunitResult test_fortnite_purchased_library_sku(const MunitParameter p[],
 	return MUNIT_OK;
 }
 
+// The purchased-library source must not hide licenses only returned by the
+// legacy entitlement source (notably feature_type=5 disc upgrades). Merging
+// keeps purchased rows first, drops exact entitlement/product duplicates, and
+// unions component entitlement IDs without repeating them.
+static MunitResult test_owned_source_union_keeps_legacy_disc_upgrade(const MunitParameter p[], void *data)
+{
+	(void)p; (void)data;
+	struct json_object *primary = parse(
+		"[{\"id\":\"ENT-PSCP\",\"product_id\":\"PROD-PSCP\","
+		"\"productId\":\"PROD-PSCP\",\"serviceType\":\"pscloud\",\"feature_type\":3}]");
+	struct json_object *primary_components = parse(
+		"{\"PROD-PSCP\":[\"ENT-PSCP\"]}");
+	struct json_object *legacy = parse(
+		"[{\"id\":\"ENT-PSCP\",\"product_id\":\"PROD-PSCP\",\"feature_type\":3},"
+		"{\"id\":\"DISC-WRAPPER\",\"product_id\":\"DISC-WRAPPER\",\"feature_type\":5}]");
+	struct json_object *legacy_components = parse(
+		"{\"PROD-PSCP\":[\"ENT-PSCP\",\"ENT-LEGACY\"],"
+		"\"DISC-WRAPPER\":[\"DISC-WRAPPER\"]}");
+
+	cc_merge_owned_source(primary, primary_components, legacy, legacy_components);
+
+	munit_assert_int((int)json_object_array_length(primary), ==, 2);
+	struct json_object *disc = NULL;
+	for(size_t i = 0; i < json_object_array_length(primary); i++)
+	{
+		struct json_object *game = json_object_array_get_idx(primary, i);
+		if(strcmp(cc_json_str(game, "product_id"), "DISC-WRAPPER") == 0)
+			disc = game;
+	}
+	munit_assert_not_null(disc);
+	munit_assert_int(cc_json_int(disc, "feature_type"), ==, 5);
+
+	struct json_object *pscp_components = cc_json_arr(primary_components, "PROD-PSCP");
+	munit_assert_not_null(pscp_components);
+	munit_assert_int((int)json_object_array_length(pscp_components), ==, 2);
+	munit_assert_string_equal(
+		json_object_get_string(json_object_array_get_idx(pscp_components, 0)), "ENT-PSCP");
+	munit_assert_string_equal(
+		json_object_get_string(json_object_array_get_idx(pscp_components, 1)), "ENT-LEGACY");
+
+	struct json_object *disc_components = cc_json_arr(primary_components, "DISC-WRAPPER");
+	munit_assert_not_null(disc_components);
+	munit_assert_int((int)json_object_array_length(disc_components), ==, 1);
+	munit_assert_string_equal(
+		json_object_get_string(json_object_array_get_idx(disc_components, 0)), "DISC-WRAPPER");
+
+	json_object_put(primary);
+	json_object_put(primary_components);
+	json_object_put(legacy);
+	json_object_put(legacy_components);
+	return MUNIT_OK;
+}
+
 // owned rows sort before non-owned; envelope carries schema + counts.
 static MunitResult test_sort_and_envelope(const MunitParameter p[], void *data)
 {
@@ -580,6 +637,7 @@ MunitTest tests_cloudcatalog_merge[] = {
 	{ "/owned_pscloud_disc_rescue_identifier", test_owned_pscloud_disc_rescue_identifier, NULL, NULL, MUNIT_TEST_OPTION_NONE, NULL },
 	{ "/purchased_library_normalization_guards", test_purchased_library_normalization_guards, NULL, NULL, MUNIT_TEST_OPTION_NONE, NULL },
 	{ "/fortnite_purchased_library_sku", test_fortnite_purchased_library_sku, NULL, NULL, MUNIT_TEST_OPTION_NONE, NULL },
+	{ "/owned_source_union_keeps_legacy_disc_upgrade", test_owned_source_union_keeps_legacy_disc_upgrade, NULL, NULL, MUNIT_TEST_OPTION_NONE, NULL },
 	{ "/sort_and_envelope", test_sort_and_envelope, NULL, NULL, MUNIT_TEST_OPTION_NONE, NULL },
 	{ "/cloud_language_helpers", test_cloud_language_helpers, NULL, NULL, MUNIT_TEST_OPTION_NONE, NULL },
 	{ "/parse_container_store_locale", test_parse_container_store_locale, NULL, NULL, MUNIT_TEST_OPTION_NONE, NULL },
